@@ -15,7 +15,7 @@ var (
 
 func main() {
 	var (
-		in     = flag.String("i", input, "input pattern")
+		in = flag.String("i", input, "input pattern")
 		// out    = flag.String("o", output, "output pattern")
 		filter = flag.String("f", "", "filter log entry")
 	)
@@ -38,6 +38,6 @@ func main() {
 		if err != nil {
 			break
 		}
-    fmt.Printf("%d: %+v\n", i, e)
+		fmt.Printf("%d: %+v\n", i, e)
 	}
 }
