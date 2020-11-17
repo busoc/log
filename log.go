@@ -110,83 +110,83 @@ func (r *Reader) Read() (Entry, error) {
 }
 
 type Writer struct {
-  inner io.Writer
-  buffer bytes.Buffer
-  print printfunc
+	inner  io.Writer
+	buffer bytes.Buffer
+	print  printfunc
 }
 
 func NewWriter(ws io.Writer, pattern string) (*Writer, error) {
-  print, err := parsePrint(pattern)
-  if err != nil {
-    return nil, err
-  }
-  w := Writer{
-    inner: ws,
-    print: print,
-  }
-  return &w, nil
+	print, err := parsePrint(pattern)
+	if err != nil {
+		return nil, err
+	}
+	w := Writer{
+		inner: ws,
+		print: print,
+	}
+	return &w, nil
 }
 
 func (w *Writer) Write(e Entry) error {
-  w.print(e, &w.buffer)
-  w.buffer.WriteRune('\n')
-  _, err := io.Copy(w.inner, &w.buffer)
-  return err
+	w.print(e, &w.buffer)
+	w.buffer.WriteRune('\n')
+	_, err := io.Copy(w.inner, &w.buffer)
+	return err
 }
 
 type (
 	parsefunc  func(*Entry, io.RuneScanner) error
-  printfunc  func(Entry, io.StringWriter)
+	printfunc  func(Entry, io.StringWriter)
 	whenfunc   func(*when, io.RuneScanner) error
 	hostfunc   func(*host, io.RuneScanner) error
 	filterfunc func(Entry) bool
 )
 
 const (
-  empty = "N/A"
+	empty = "N/A"
 )
 
 func parsePrint(pattern string) (printfunc, error) {
-  if pattern == "" {
+	if pattern == "" {
 		return nil, fmt.Errorf("%w: empty pattern not allowed", ErrSyntax)
 	}
-  var (
-    str = bytes.NewReader([]byte(pattern))
-    buf bytes.Buffer
-    pfs []printfunc
-  )
-  for str.Len() > 0 {
-    r, _, _ := str.ReadRune()
-    if r == '%' {
-      r, _, _ = str.ReadRune()
-      if r == '%' {
-        buf.WriteRune(r)
-        continue
-      }
-      if buf.Len() > 0 {
+	var (
+		str = bytes.NewReader([]byte(pattern))
+		buf bytes.Buffer
+		pfs []printfunc
+	)
+	for str.Len() > 0 {
+		r, _, _ := str.ReadRune()
+		if r == '%' {
+			r, _, _ = str.ReadRune()
+			if r == '%' {
+				buf.WriteRune(r)
+				continue
+			}
+			if buf.Len() > 0 {
 				pfs = append(pfs, printLiteral(buf.String()))
-        buf.Reset()
-      }
-      switch r {
-      case 't':
+				buf.Reset()
+			}
+			switch r {
+			case 't':
 				pfs = append(pfs, printTime)
-      case 'n':
+			case 'n':
 				pfs = append(pfs, printProcess)
-      case 'p':
+			case 'p':
 				pfs = append(pfs, printPID)
-      case 'u':
+			case 'u':
 				pfs = append(pfs, printUser)
-      case 'g':
+			case 'g':
 				pfs = append(pfs, printGroup)
-      case 'h':
+			case 'h':
 				pfs = append(pfs, printHost)
-      case 'l':
+			case 'l':
 				pfs = append(pfs, printLevel)
-      case 'm':
+			case 'm':
 				pfs = append(pfs, printMessage)
-      case '#':
+			case '#':
 				pfs = append(pfs, printLine)
-      default:
+			default:
 				if !isDigit(r) {
 					return nil, fmt.Errorf("%w(print): unknown specifier %c", ErrPattern, r)
 				}
@@ -196,12 +196,12 @@ func parsePrint(pattern string) (printfunc, error) {
 					return nil, err
 				}
 				pfs = append(pfs, printWord(j))
-      }
-    } else {
-      buf.WriteRune(r)
-    }
-  }
-  return mergePrint(pfs), nil
+			}
+		} else {
+			buf.WriteRune(r)
+		}
+	}
+	return mergePrint(pfs), nil
 }
 
 func mergePrint(pfs []printfunc) printfunc {
@@ -213,66 +213,66 @@ func mergePrint(pfs []printfunc) printfunc {
 }
 
 func printLiteral(str string) printfunc {
-  return func(_ Entry, w io.StringWriter) {
-    printString(str, w)
-  }
+	return func(_ Entry, w io.StringWriter) {
+		printString(str, w)
+	}
 }
 
 func printWord(i int) printfunc {
-  return func(e Entry, w io.StringWriter) {
-    var str string
-    if i >= 0 && i < len(e.Words) {
-      str = e.Words[i]
-    }
-    printString(str, w)
-  }
+	return func(e Entry, w io.StringWriter) {
+		var str string
+		if i >= 0 && i < len(e.Words) {
+			str = e.Words[i]
+		}
+		printString(str, w)
+	}
 }
 
 func printTime(e Entry, w io.StringWriter) {
-  var str string
-  if !e.When.IsZero() {
-    str = e.When.Format(time.RFC3339)
-  }
-  printString(str, w)
+	var str string
+	if !e.When.IsZero() {
+		str = e.When.Format(time.RFC3339)
+	}
+	printString(str, w)
 }
 
 func printProcess(e Entry, w io.StringWriter) {
-  printString(e.Process, w)
+	printString(e.Process, w)
 }
 
 func printPID(e Entry, w io.StringWriter) {
-  printString(strconv.Itoa(e.Pid), w)
+	printString(strconv.Itoa(e.Pid), w)
 }
 
 func printUser(e Entry, w io.StringWriter) {
-  printString(e.User, w)
+	printString(e.User, w)
 }
 
 func printGroup(e Entry, w io.StringWriter) {
-  printString(e.Group, w)
+	printString(e.Group, w)
 }
 
 func printHost(e Entry, w io.StringWriter) {
-  printString(e.Host, w)
+	printString(e.Host, w)
 }
 
 func printLevel(e Entry, w io.StringWriter) {
-  printString(e.Level, w)
+	printString(e.Level, w)
 }
 
 func printMessage(e Entry, w io.StringWriter) {
-  printString(e.Message, w)
+	printString(e.Message, w)
 }
 
 func printLine(e Entry, w io.StringWriter) {
-  printString(e.Line, w)
+	printString(e.Line, w)
 }
 
 func printString(str string, w io.StringWriter) {
-  if str == "" {
-    str = empty
-  }
-  w.WriteString(str)
+	if str == "" {
+		str = empty
+	}
+	w.WriteString(str)
 }
 
 func parseFilter(str string) (filterfunc, error) {
