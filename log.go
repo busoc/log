@@ -37,6 +37,7 @@ import (
 // %m: message
 // %w: word
 // %b: blank
+// %*: discard one or multiple characters
 // %%: a percent sign
 // c : any character(s)
 
@@ -406,6 +407,8 @@ func parsePattern(pattern string) (parsefunc, error) {
 				pfs = append(pfs, parseMessage())
 			case 'w':
 				pfs = append(pfs, parseWord(""))
+			case '*':
+				pfs = append(pfs, parseDiscard(peek(str)))
 			default:
 				return nil, fmt.Errorf("%w: unsupported specifier %%%c", ErrSyntax, r)
 			}
@@ -589,6 +592,16 @@ func parseGroup() parsefunc {
 	}
 }
 
+func parseDiscard(next rune) parsefunc {
+  accept := func(r rune) bool {
+    return r != next
+  }
+  return func(_ *Entry, r io.RuneScanner) error {
+    parseString(r, 0, accept)
+    return nil
+  }
+}
+
 func parseProcess() parsefunc {
 	return func(e *Entry, r io.RuneScanner) error {
 		e.Process, _ = parseString(r, 0, isAlpha)
@@ -770,6 +783,7 @@ func parseDayStr(w *when, r io.RuneScanner) error {
 	if err != nil {
 		return err
 	}
+  day = strings.ToLower(day)
 	x := sort.SearchStrings(days, day)
 	if x >= len(days) || days[x] != day {
 		return ErrPattern
@@ -786,6 +800,7 @@ func parseMonthStr(w *when, r io.RuneScanner) error {
 	if err != nil {
 		return err
 	}
+  month = strings.ToLower(month)
 	x := sort.SearchStrings(months, month)
 	if x >= len(months) || months[x] != month {
 		return ErrPattern
