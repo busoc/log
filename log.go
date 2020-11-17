@@ -12,6 +12,61 @@ import (
 	"time"
 )
 
+// line specifiers (writing)
+// %t: time
+// %n: process
+// %p: pid
+// %u: user
+// %g: group
+// %h: host
+// %l: level
+// %m: message
+// %#: line
+// %[digit]: word
+// %%: a percent sign
+// c : any character(s)
+
+// line specifiers (read)
+// %t: time (time format, eg, %y-%m-%d)
+// %n: process
+// %p: pid
+// %u: user
+// %g: group
+// %h: host (host format, eg, ip:port, fqdn)
+// %l: level (list of accepted level)
+// %m: message
+// %w: word
+// %b: blank
+// %%: a percent sign
+// c : any character(s)
+
+// host specifiers
+// %p: port
+// %4: ipv4
+// %6: ipv6 // rfc5952
+// %h: hostname
+// %f: fqdn
+// %m: net mask
+// %F: ipv4:port
+// %S: ipv6:port
+// %Q: fqdn:port
+
+// time specifiers
+// %y: year (4 digits)
+// %m: month (2 digits)
+// %b: month name (abbr)
+// %a: day name (abbr)
+// %d: day (2 digits)
+// %j: day of year (3 digits)
+// %H: hour of day (2 digits)
+// %M: minute of hour (2 digits)
+// %S: second of minute (2 digits)
+// %f: fraction of second (up to 9 digits)
+// %s: unix timestamp
+// %z: zone
+// %I: %y-%m-%d %H:%M:%S%Z
+// %R: %y-%m-%dT%H:%M:%S%Z
+
 func init() {
 	sort.Strings(days)
 	sort.Strings(months)
