@@ -16,7 +16,7 @@ var (
 func main() {
 	var (
 		in = flag.String("i", input, "input pattern")
-		// out    = flag.String("o", output, "output pattern")
+		out    = flag.String("o", output, "output pattern")
 		filter = flag.String("f", "", "filter log entry")
 	)
 	flag.Parse()
@@ -33,11 +33,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+  ws, err := log.NewWriter(os.Stdout, *out)
+  if err != nil {
+    fmt.Fprintln(os.Stderr, err)
+    os.Exit(1)
+  }
 	for i := 1; ; i++ {
 		e, err := rs.Read()
 		if err != nil {
 			break
 		}
-		fmt.Printf("%d: %+v\n", i, e)
+    if err := ws.Write(e); err != nil {
+      fmt.Fprintln(os.Stderr, err)
+      break
+    }
 	}
 }
