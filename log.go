@@ -79,7 +79,7 @@ var (
 )
 
 type Entry struct {
-	Line string
+	Line string `json:"-"`
 
 	Pid     int
 	Process string
@@ -522,12 +522,10 @@ func parseHost(str string) (parsefunc, error) {
 
 func parsePID() parsefunc {
 	return func(e *Entry, r io.RuneScanner) error {
-		str, _ := parseString(r, 0, isDigit)
-		p, err := strconv.Atoi(str)
-		if err == nil {
-			e.Pid = p
-		}
-		return err
+    if err := parseInt(&e.Pid, 0, r, isDigit); err != nil {
+      return err
+    }
+		return nil
 	}
 }
 
@@ -1135,7 +1133,11 @@ func parseInt(i *int, n int, str io.RuneScanner, accept func(rune) bool) error {
 		}
 		buf.WriteRune(r)
 	}
-	x, err := strconv.ParseInt(strings.TrimPrefix(buf.String(), "0"), 0, 64)
+  part := strings.TrimLeft(buf.String(), "0")
+  if part == "" {
+    return nil
+  }
+	x, err := strconv.ParseInt(part, 0, 64)
 	if err == nil {
 		*i = int(x)
 	}
