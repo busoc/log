@@ -297,7 +297,11 @@ func printProcess(e Entry, w io.StringWriter) {
 }
 
 func printPID(e Entry, w io.StringWriter) {
-	printString(strconv.Itoa(e.Pid), w)
+	var str string
+	if e.Pid > 0 {
+		str = strconv.Itoa(e.Pid)
+	}
+	printString(str, w)
 }
 
 func printUser(e Entry, w io.StringWriter) {
@@ -394,9 +398,12 @@ func parsePattern(pattern string) (parsefunc, error) {
 				}
 				pfs = append(pfs, fn)
 			case 'l':
-				arg, err := parseArgument(str, "", "level")
+				arg, err := parseArgument(str, "-", "level")
 				if err != nil {
 					return nil, err
+				}
+				if arg == "-" {
+					arg = ""
 				}
 				fn, err := parseLevel(arg)
 				if err != nil {
@@ -462,8 +469,12 @@ func parseLevel(level string) (parsefunc, error) {
 		}
 		return r
 	}, level)
-	levels := strings.Split(level, ",")
-	sort.Strings(levels)
+	var levels []string
+	if level != "" {
+		levels = strings.Split(level, ",")
+		sort.Strings(levels)
+
+	}
 	fn := func(e *Entry, r io.RuneScanner) error {
 		e.Level, _ = parseString(r, 0, isLetter)
 		x := sort.SearchStrings(levels, e.Level)
@@ -995,7 +1006,13 @@ func parseHostLiteral(str string) hostfunc {
 }
 
 func parseIPv4(h *host, r io.RuneScanner) error {
-	var buf bytes.Buffer
+	var (
+    buf bytes.Buffer
+    quote = peek(r)
+  )
+  if quote == '[' {
+    r.ReadRune()
+  }
 	for i := 0; i < ip4len; i++ {
 		var j int
 		if err := parseInt(&j, 0, r, isDigit); err != nil {
@@ -1013,6 +1030,12 @@ func parseIPv4(h *host, r io.RuneScanner) error {
 			buf.WriteRune('.')
 		}
 	}
+  if k := peek(r); quote == '[' {
+    if k != ']' {
+      return ErrPattern
+    }
+    r.ReadRune()
+  }
 	h.Addr = buf.String()
 	return nil
 }
@@ -1112,7 +1135,7 @@ func parseInt(i *int, n int, str io.RuneScanner, accept func(rune) bool) error {
 		}
 		buf.WriteRune(r)
 	}
-	x, err := strconv.ParseInt(buf.String(), 0, 64)
+	x, err := strconv.ParseInt(strings.TrimPrefix(buf.String(), "0"), 0, 64)
 	if err == nil {
 		*i = int(x)
 	}
