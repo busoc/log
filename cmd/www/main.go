@@ -15,6 +15,11 @@ import (
 	"github.com/midbel/toml"
 )
 
+const (
+  qFilter = "filter"
+  qLimit  = "limit"
+)
+
 type Log struct {
 	File    string
 	URL     string
@@ -25,9 +30,9 @@ type Log struct {
 func (g Log) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var (
 		query = r.URL.Query()
-		limit = retrLimit(query)
+		limit = retrLimit(query.Get(qLimit))
 	)
-	es, err := g.readEntries(limit, query.Get("filter"))
+	es, err := g.readEntries(limit, query.Get(qFilter))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -58,11 +63,6 @@ func (g Log) readEntries(limit int, filter string) ([]log.Entry, error) {
 		es = es[len(es)-limit:]
 	}
 	return es, nil
-}
-
-func retrLimit(q url.Values) int {
-	i, _ := strconv.Atoi(q.Get("limit"))
-	return i
 }
 
 func main() {
@@ -103,4 +103,9 @@ func allowMethod(next http.Handler) http.Handler {
 		next(w, r)
 	}
 	return http.HandlerFunc(fn)
+}
+
+func retrLimit(str string) int {
+	i, _ := strconv.Atoi(str)
+	return i
 }
