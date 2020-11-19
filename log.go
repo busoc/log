@@ -191,7 +191,7 @@ func (w *Writer) Write(e Entry) error {
 }
 
 type (
-	parsefunc  func(*Entry, io.RuneScanner) error
+	parsefunc  func(*Entry, *bytes.Reader) error
 	printfunc  func(Entry, io.StringWriter)
 	whenfunc   func(*when, io.RuneScanner) error
 	hostfunc   func(*host, io.RuneScanner) error
@@ -347,90 +347,108 @@ func parsePattern(pattern string) (parsefunc, error) {
 		return nil, fmt.Errorf("%w: empty pattern not allowed", ErrSyntax)
 	}
 	var (
-		pfs []parsefunc
-		str = bytes.NewReader([]byte(pattern))
-		buf bytes.Buffer
+		until = func(r rune) bool { return r == 0 }
+		str   = bytes.NewReader([]byte(pattern))
 	)
-	for str.Len() > 0 {
-		r, _, _ := str.ReadRune()
-		if r == '%' {
-			r, _, err := str.ReadRune()
-			if err != nil {
-				return nil, err
-			}
-			if r == '%' {
-				buf.WriteRune(r)
+	_, fn, err := parsePatternUntil(str, until)
+	return fn, err
+}
+
+func parsePatternUntil(str *bytes.Reader, until func(rune) bool) (rune, parsefunc, error) {
+	var (
+		pfs  []parsefunc
+		buf  bytes.Buffer
+		last rune
+	)
+	for {
+		last, _, _ = str.ReadRune()
+		if until(last) {
+			break
+		}
+		if last == '%' {
+			last, _, _ = str.ReadRune()
+			if last == '%' {
+				buf.WriteRune(last)
 				continue
 			}
 			if buf.Len() > 0 {
 				pfs = append(pfs, parseLiteral(buf.String()))
 				buf.Reset()
 			}
-			switch r {
-			case 't':
-				arg, err := parseArgument(str, rfcPattern, "time")
-				if err != nil {
-					return nil, err
-				}
-				fn, err := parseTime(arg)
-				if err != nil {
-					return nil, err
-				}
-				pfs = append(pfs, fn)
-			case 'b':
-				pfs = append(pfs, parseBlank())
-			case 'n':
-				pfs = append(pfs, parseProcess())
-			case 'p':
-				pfs = append(pfs, parsePID())
-			case 'u':
-				pfs = append(pfs, parseUser())
-			case 'g':
-				pfs = append(pfs, parseGroup())
-			case 'h':
-				arg, err := parseArgument(str, "%f", "host")
-				if err != nil {
-					return nil, err
-				}
-				fn, err := parseHost(arg)
-				if err != nil {
-					return nil, err
-				}
-				pfs = append(pfs, fn)
-			case 'l':
-				arg, err := parseArgument(str, "-", "level")
-				if err != nil {
-					return nil, err
-				}
-				if arg == "-" {
-					arg = ""
-				}
-				fn, err := parseLevel(arg)
-				if err != nil {
-					return nil, err
-				}
-				pfs = append(pfs, fn)
-			case 'm':
-				pfs = append(pfs, parseMessage())
-			case 'w':
-				pfs = append(pfs, parseWord(""))
-			case '*':
-				pfs = append(pfs, parseDiscard(peek(str)))
-			default:
-				return nil, fmt.Errorf("%w: unsupported specifier %%%c", ErrSyntax, r)
+			fn, err := parseSpecifier(str, last)
+			if err != nil {
+				return last, nil, err
 			}
+			pfs = append(pfs, fn)
+		} else if last == '@' {
+			fn, err := parseAlternative(str)
+			if err != nil {
+				return last, nil, err
+			}
+			pfs = append(pfs, fn)
+		} else if last == '\\' {
+			switch last, _, _ = str.ReadRune(); last {
+			case '\\', '@', '*', '(', ')', '|':
+			default:
+				return last, nil, fmt.Errorf("%w: invalid escaped character %c", last)
+			}
+			buf.WriteRune(last)
 		} else {
-			buf.WriteRune(r)
+			buf.WriteRune(last)
 		}
 	}
 	if buf.Len() > 0 {
 		pfs = append(pfs, parseLiteral(buf.String()))
 	}
-	return mergeParse(pfs), nil
+	return last, mergeParse(pfs), nil
+}
+
+func parseSpecifier(str *bytes.Reader, r rune) (parsefunc, error) {
+	switch r {
+	case 't':
+		arg, err := parseArgument(str, rfcPattern, "time")
+		if err != nil {
+			return nil, err
+		}
+		return parseTime(arg)
+	case 'b':
+		return parseBlank(), nil
+	case 'n':
+		return parseProcess(), nil
+	case 'p':
+		return parsePID(), nil
+	case 'u':
+		return parseUser(), nil
+	case 'g':
+		return parseGroup(), nil
+	case 'h':
+		arg, err := parseArgument(str, "%f", "host")
+		if err != nil {
+			return nil, err
+		}
+		return parseHost(arg)
+	case 'l':
+		arg, err := parseArgument(str, "-", "level")
+		if err != nil {
+			return nil, err
+		}
+		if arg == "-" {
+			arg = ""
+		}
+		return parseLevel(arg)
+	case 'm':
+		return parseMessage(), nil
+	case 'w':
+		return parseWord(""), nil
+	case '*':
+		return parseDiscard(peek(str)), nil
+	default:
+		return nil, fmt.Errorf("%w: unsupported specifier %%%c", ErrSyntax, r)
+	}
 }
 
 func mergeParse(pfs []parsefunc) parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
+	return func(e *Entry, r *bytes.Reader) error {
 		for _, pf := range pfs {
 			if err := pf(e, r); err != nil {
 				return err
@@ -462,6 +480,59 @@ func parseArgument(str *bytes.Reader, option, what string) (string, error) {
 	return "", fmt.Errorf("%w(%s): missing )", ErrSyntax, what)
 }
 
+func parseAlternative(str *bytes.Reader) (parsefunc, error) {
+	r, _, _ := str.ReadRune()
+	if r != '(' {
+		return nil, fmt.Errorf("%w: missing (", ErrSyntax)
+	}
+	var (
+		pfs   []parsefunc
+		until = func(r rune) bool { return r == '|' || r == ')' }
+	)
+	for {
+		last, fn, err := parsePatternUntil(str, until)
+		if err != nil {
+			return nil, err
+		}
+		if last != '|' && last != ')' {
+			return nil, fmt.Errorf("%w: unexpected character %c", ErrSyntax, last)
+		}
+		pfs = append(pfs, fn)
+		if last == ')' {
+			break
+		}
+	}
+	return parseAlt(pfs)
+}
+
+func parseAlt(pfs []parsefunc) (parsefunc, error) {
+	if len(pfs) == 0 {
+		return nil, fmt.Errorf("%w: empty alternatives", ErrSyntax)
+	}
+	fn := func(e *Entry, r *bytes.Reader) error {
+		var (
+			err  error
+			seek int64
+		)
+		seek, err = r.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+		for _, pf := range pfs {
+			if err = pf(e, r); err == nil {
+				break
+			}
+			seek, err = r.Seek(seek, io.SeekStart)
+			if err != nil {
+				return err
+			}
+		}
+		return err
+		return nil
+	}
+	return fn, nil
+}
+
 func parseLevel(level string) (parsefunc, error) {
 	level = strings.Map(func(r rune) rune {
 		if isBlank(r) {
@@ -475,7 +546,7 @@ func parseLevel(level string) (parsefunc, error) {
 		sort.Strings(levels)
 
 	}
-	fn := func(e *Entry, r io.RuneScanner) error {
+	fn := func(e *Entry, r *bytes.Reader) error {
 		e.Level, _ = parseString(r, 0, isLetter)
 		x := sort.SearchStrings(levels, e.Level)
 		if len(levels) > 0 && (x >= len(levels) || levels[x] != e.Level) {
@@ -491,7 +562,7 @@ func parseTime(str string) (parsefunc, error) {
 	if err != nil {
 		return nil, err
 	}
-	fn := func(e *Entry, r io.RuneScanner) error {
+	fn := func(e *Entry, r *bytes.Reader) error {
 		var (
 			w   when
 			err = parse(&w, r)
@@ -509,7 +580,7 @@ func parseHost(str string) (parsefunc, error) {
 	if err != nil {
 		return nil, err
 	}
-	fn := func(e *Entry, r io.RuneScanner) error {
+	fn := func(e *Entry, r *bytes.Reader) error {
 		var h host
 		if err := parse(&h, r); err != nil {
 			return err
@@ -521,16 +592,16 @@ func parseHost(str string) (parsefunc, error) {
 }
 
 func parsePID() parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
-    if err := parseInt(&e.Pid, 0, r, isDigit); err != nil {
-      return err
-    }
+	return func(e *Entry, r *bytes.Reader) error {
+		if err := parseInt(&e.Pid, 0, r, isDigit); err != nil {
+			return err
+		}
 		return nil
 	}
 }
 
 func parseLiteral(str string) parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
+	return func(e *Entry, r *bytes.Reader) error {
 		pat := strings.NewReader(str)
 		for pat.Len() > 0 {
 			w, _, _ := pat.ReadRune()
@@ -544,14 +615,14 @@ func parseLiteral(str string) parsefunc {
 }
 
 func parseMessage() parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
+	return func(e *Entry, r *bytes.Reader) error {
 		e.Message, _ = parseString(r, 0, func(r rune) bool { return !isEOL(r) })
 		return nil
 	}
 }
 
 func parseWord(str string) parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
+	return func(e *Entry, r *bytes.Reader) error {
 		var (
 			buf     bytes.Buffer
 			quote   = peek(r)
@@ -588,38 +659,38 @@ func parseWord(str string) parsefunc {
 }
 
 func parseUser() parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
+	return func(e *Entry, r *bytes.Reader) error {
 		e.User, _ = parseString(r, 0, isAlpha)
 		return nil
 	}
 }
 
 func parseGroup() parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
+	return func(e *Entry, r *bytes.Reader) error {
 		e.Group, _ = parseString(r, 0, isAlpha)
 		return nil
 	}
 }
 
 func parseDiscard(next rune) parsefunc {
-  accept := func(r rune) bool {
-    return r != next
-  }
-  return func(_ *Entry, r io.RuneScanner) error {
-    parseString(r, 0, accept)
-    return nil
-  }
+	accept := func(r rune) bool {
+		return r != next
+	}
+	return func(_ *Entry, r *bytes.Reader) error {
+		parseString(r, 0, accept)
+		return nil
+	}
 }
 
 func parseProcess() parsefunc {
-	return func(e *Entry, r io.RuneScanner) error {
+	return func(e *Entry, r *bytes.Reader) error {
 		e.Process, _ = parseString(r, 0, isAlpha)
 		return nil
 	}
 }
 
 func parseBlank() parsefunc {
-	return func(_ *Entry, r io.RuneScanner) error {
+	return func(_ *Entry, r *bytes.Reader) error {
 		parseString(r, 0, isBlank)
 		return nil
 	}
@@ -792,7 +863,7 @@ func parseDayStr(w *when, r io.RuneScanner) error {
 	if err != nil {
 		return err
 	}
-  day = strings.ToLower(day)
+	day = strings.ToLower(day)
 	x := sort.SearchStrings(days, day)
 	if x >= len(days) || days[x] != day {
 		return ErrPattern
@@ -809,7 +880,7 @@ func parseMonthStr(w *when, r io.RuneScanner) error {
 	if err != nil {
 		return err
 	}
-  month = strings.ToLower(month)
+	month = strings.ToLower(month)
 	x := sort.SearchStrings(months, month)
 	if x >= len(months) || months[x] != month {
 		return ErrPattern
@@ -1005,12 +1076,12 @@ func parseHostLiteral(str string) hostfunc {
 
 func parseIPv4(h *host, r io.RuneScanner) error {
 	var (
-    buf bytes.Buffer
-    quote = peek(r)
-  )
-  if quote == '[' {
-    r.ReadRune()
-  }
+		buf   bytes.Buffer
+		quote = peek(r)
+	)
+	if quote == '[' {
+		r.ReadRune()
+	}
 	for i := 0; i < ip4len; i++ {
 		var j int
 		if err := parseInt(&j, 0, r, isDigit); err != nil {
@@ -1028,12 +1099,12 @@ func parseIPv4(h *host, r io.RuneScanner) error {
 			buf.WriteRune('.')
 		}
 	}
-  if k := peek(r); quote == '[' {
-    if k != ']' {
-      return ErrPattern
-    }
-    r.ReadRune()
-  }
+	if k := peek(r); quote == '[' {
+		if k != ']' {
+			return ErrPattern
+		}
+		r.ReadRune()
+	}
 	h.Addr = buf.String()
 	return nil
 }
@@ -1133,10 +1204,10 @@ func parseInt(i *int, n int, str io.RuneScanner, accept func(rune) bool) error {
 		}
 		buf.WriteRune(r)
 	}
-  part := strings.TrimLeft(buf.String(), "0")
-  if part == "" {
-    return nil
-  }
+	part := strings.TrimLeft(buf.String(), "0")
+	if part == "" {
+		return nil
+	}
 	x, err := strconv.ParseInt(part, 0, 64)
 	if err == nil {
 		*i = int(x)
