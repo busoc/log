@@ -191,10 +191,10 @@ func (w *Writer) Write(e Entry) error {
 }
 
 type (
-	parsefunc  func(*Entry, *bytes.Reader) error
 	printfunc  func(Entry, io.StringWriter)
-	whenfunc   func(*when, io.RuneScanner) error
-	hostfunc   func(*host, io.RuneScanner) error
+	parsefunc  func(*Entry, *bytes.Reader) error
+	whenfunc   func(*when, *bytes.Reader) error
+	hostfunc   func(*host, *bytes.Reader) error
 	filterfunc func(Entry) bool
 )
 
@@ -836,7 +836,7 @@ func parseTimePattern(pattern string) (whenfunc, error) {
 }
 
 func mergeWhen(wfs []whenfunc) whenfunc {
-	return func(w *when, r io.RuneScanner) error {
+	return func(w *when, r *bytes.Reader) error {
 		for _, fn := range wfs {
 			if err := fn(w, r); err != nil {
 				return err
@@ -846,19 +846,19 @@ func mergeWhen(wfs []whenfunc) whenfunc {
 	}
 }
 
-func parseYear(w *when, r io.RuneScanner) error {
+func parseYear(w *when, r *bytes.Reader) error {
 	return parseInt(&w.Year, 4, r, isDigit)
 }
 
-func parseDOY(w *when, r io.RuneScanner) error {
+func parseDOY(w *when, r *bytes.Reader) error {
 	return parseInt(&w.YearDay, 3, r, isDigit)
 }
 
-func parseDay(w *when, r io.RuneScanner) error {
+func parseDay(w *when, r *bytes.Reader) error {
 	return parseInt(&w.Day, 2, r, isDigit)
 }
 
-func parseDayStr(w *when, r io.RuneScanner) error {
+func parseDayStr(w *when, r *bytes.Reader) error {
 	day, err := parseString(r, 3, isLetter)
 	if err != nil {
 		return err
@@ -871,11 +871,11 @@ func parseDayStr(w *when, r io.RuneScanner) error {
 	return nil
 }
 
-func parseMonth(w *when, r io.RuneScanner) error {
+func parseMonth(w *when, r *bytes.Reader) error {
 	return parseInt(&w.Mon, 2, r, isDigit)
 }
 
-func parseMonthStr(w *when, r io.RuneScanner) error {
+func parseMonthStr(w *when, r *bytes.Reader) error {
 	month, err := parseString(r, 3, isLetter)
 	if err != nil {
 		return err
@@ -889,23 +889,23 @@ func parseMonthStr(w *when, r io.RuneScanner) error {
 	return nil
 }
 
-func parseHour(w *when, r io.RuneScanner) error {
+func parseHour(w *when, r *bytes.Reader) error {
 	return parseInt(&w.Hour, 2, r, isDigit)
 }
 
-func parseMinute(w *when, r io.RuneScanner) error {
+func parseMinute(w *when, r *bytes.Reader) error {
 	return parseInt(&w.Min, 2, r, isDigit)
 }
 
-func parseSecond(w *when, r io.RuneScanner) error {
+func parseSecond(w *when, r *bytes.Reader) error {
 	return parseInt(&w.Sec, 2, r, isDigit)
 }
 
-func parseTimestamp(w *when, r io.RuneScanner) error {
+func parseTimestamp(w *when, r *bytes.Reader) error {
 	return parseInt(&w.Unix, 0, r, isDigit)
 }
 
-func parseZone(w *when, r io.RuneScanner) error {
+func parseZone(w *when, r *bytes.Reader) error {
 	switch z, _, _ := r.ReadRune(); z {
 	case 'Z':
 	case '+', '-':
@@ -934,7 +934,7 @@ func parseZone(w *when, r io.RuneScanner) error {
 	return nil
 }
 
-func parseFraction(w *when, r io.RuneScanner) error {
+func parseFraction(w *when, r *bytes.Reader) error {
 	if err := parseInt(&w.Frac, 0, r, isDigit); err != nil {
 		return err
 	}
@@ -949,7 +949,7 @@ func parseFraction(w *when, r io.RuneScanner) error {
 }
 
 func parseWhenLiteral(str string) whenfunc {
-	return func(_ *when, r io.RuneScanner) error {
+	return func(_ *when, r *bytes.Reader) error {
 		pat := strings.NewReader(str)
 		for pat.Len() > 0 {
 			w, _, _ := pat.ReadRune()
@@ -1050,7 +1050,7 @@ func parseHostPattern(pattern string) (hostfunc, error) {
 }
 
 func mergeHost(hfs []hostfunc) hostfunc {
-	return func(h *host, r io.RuneScanner) error {
+	return func(h *host, r *bytes.Reader) error {
 		for _, fn := range hfs {
 			if err := fn(h, r); err != nil {
 				return err
@@ -1061,7 +1061,7 @@ func mergeHost(hfs []hostfunc) hostfunc {
 }
 
 func parseHostLiteral(str string) hostfunc {
-	return func(_ *host, r io.RuneScanner) error {
+	return func(_ *host, r *bytes.Reader) error {
 		pat := strings.NewReader(str)
 		for pat.Len() > 0 {
 			w, _, _ := pat.ReadRune()
@@ -1074,7 +1074,7 @@ func parseHostLiteral(str string) hostfunc {
 	}
 }
 
-func parseIPv4(h *host, r io.RuneScanner) error {
+func parseIPv4(h *host, r *bytes.Reader) error {
 	var (
 		buf   bytes.Buffer
 		quote = peek(r)
@@ -1109,7 +1109,7 @@ func parseIPv4(h *host, r io.RuneScanner) error {
 	return nil
 }
 
-func parseIPv6(h *host, r io.RuneScanner) error {
+func parseIPv6(h *host, r *bytes.Reader) error {
 	var (
 		buf   bytes.Buffer
 		quote = peek(r)
@@ -1148,7 +1148,7 @@ func parseIPv6(h *host, r io.RuneScanner) error {
 	return nil
 }
 
-func parseMask(h *host, r io.RuneScanner) error {
+func parseMask(h *host, r *bytes.Reader) error {
 	if err := parseInt(&h.Mask, 0, r, isDigit); err != nil {
 		return err
 	}
@@ -1158,7 +1158,7 @@ func parseMask(h *host, r io.RuneScanner) error {
 	return nil
 }
 
-func parsePort(h *host, r io.RuneScanner) error {
+func parsePort(h *host, r *bytes.Reader) error {
 	if err := parseInt(&h.Port, 0, r, isDigit); err != nil {
 		return err
 	}
@@ -1168,12 +1168,12 @@ func parsePort(h *host, r io.RuneScanner) error {
 	return nil
 }
 
-func parseHostname(h *host, r io.RuneScanner) error {
+func parseHostname(h *host, r *bytes.Reader) error {
 	h.Name, _ = parseString(r, 0, isAlpha)
 	return nil
 }
 
-func parseFQDN(h *host, r io.RuneScanner) error {
+func parseFQDN(h *host, r *bytes.Reader) error {
 	var buf bytes.Buffer
 	for {
 		part, _ := parseString(r, 0, isAlpha)
