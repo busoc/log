@@ -91,16 +91,16 @@ func main() {
 }
 
 func wrapHandler(next http.Handler) http.Handler {
-  return allowMethod(next)
+	return allowMethod(next)
 }
 
 func allowMethod(next http.Handler) http.Handler {
-  fn := func(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet {
-  		w.WriteHeader(http.StatusMethodNotAllowed)
-  		return
-  	}
-    next(w, r)
-  }
-  return http.HandlerFunc(fn)
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
+	}
+	return http.HandlerFunc(fn)
 }
