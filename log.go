@@ -387,9 +387,8 @@ func parsePatternUntil(str *bytes.Reader, until func(rune) bool) (rune, parsefun
 			}
 			pfs = append(pfs, fn)
 		} else if last == '\\' {
-			switch last, _, _ = str.ReadRune(); last {
-			case '\\', '@', '*', '(', ')', '|':
-			default:
+			last, _, _ = str.ReadRune()
+			if !isEscape(last) {
 				return last, nil, fmt.Errorf("%w: invalid escaped character %c", last)
 			}
 			buf.WriteRune(last)
@@ -471,6 +470,11 @@ func parseArgument(str *bytes.Reader, option, what string) (string, error) {
 		r, _, _ := str.ReadRune()
 		if r == ')' {
 			return buf.String(), nil
+		} else if r == '\\' {
+			r, _, _ = str.ReadRune()
+			if !isEscape(r) {
+				return "", fmt.Errorf("%w: invalid escaped character %c", r)
+			}
 		}
 		buf.WriteRune(r)
 		if buf.Len() > 64 {
@@ -528,7 +532,6 @@ func parseAlt(pfs []parsefunc) (parsefunc, error) {
 			}
 		}
 		return err
-		return nil
 	}
 	return fn, nil
 }
@@ -1266,4 +1269,8 @@ func isEOL(r rune) bool {
 
 func isQuote(r rune) bool {
 	return r == '\'' || r == '"'
+}
+
+func isEscape(r rune) bool {
+	return r == '\\' || r == '@' || r == '*' || r == '(' || r == ')' || r == '|'
 }
