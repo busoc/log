@@ -81,15 +81,15 @@ var (
 type Entry struct {
 	Line string `json:"-"`
 
-	Pid     int
-	Process string
-	User    string
-	Group   string
-	Level   string
-	Message string
-	Words   []string
-	Host    string
-	When    time.Time
+	Pid     int       `json:"pid"`
+	Process string    `json:"process"`
+	User    string    `json:"user"`
+	Group   string    `json:"group"`
+	Level   string    `json:"level"`
+	Message string    `json:"message"`
+	Words   []string  `json:"words"`
+	Host    string    `json:"host"`
+	When    time.Time `json:"when"`
 }
 
 type Reader struct {

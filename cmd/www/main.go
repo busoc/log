@@ -7,20 +7,23 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/midbel/log"
 	"github.com/midbel/toml"
 )
 
 const (
-  qFilter = "filter"
-  qLimit  = "limit"
+	qFilter = "filter"
+	qLimit  = "limit"
 )
 
 type Log struct {
+	Label   string
 	File    string
 	URL     string
 	Pattern string `toml:"format"`
@@ -55,9 +58,17 @@ func (g Log) readEntries(limit int, filter string) ([]log.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	es, err := rs.ReadAll()
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
+	es := make([]log.Entry, 0, g.Line)
+	for {
+		e, err := rs.Read()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+		e.When = e.When.Truncate(time.Second)
+		es = append(es, e)
 	}
 	if limit > 0 && limit < len(es) {
 		es = es[len(es)-limit:]
@@ -83,6 +94,7 @@ func main() {
 		}
 		http.Handle(g.URL, wrapHandler(g))
 	}
+	http.Handle("/sources", viewSources(config.Logs))
 
 	if err := http.ListenAndServe(config.Addr, nil); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -91,16 +103,57 @@ func main() {
 }
 
 func wrapHandler(next http.Handler) http.Handler {
-	return allowMethod(next)
+	return allowMethod(allowOrigin(next))
+}
+
+func viewSources(logs []Log) http.Handler {
+	sources := []struct {
+		Label string `json:"label"`
+		URL   string `json:"url"`
+	}{}
+	for _, g := range logs {
+		if g.Label == "" {
+			g.Label = strings.TrimSuffix(filepath.Base(g.File), filepath.Ext(g.File))
+		}
+		s := struct {
+			Label string `json:"label"`
+			URL   string `json:"url"`
+		}{
+			Label: g.Label,
+			URL:   g.URL,
+		}
+		sources = append(sources, s)
+	}
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(sources)
+	}
+	return wrapHandler(http.HandlerFunc(fn))
 }
 
 func allowMethod(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		switch r.Method {
+		case http.MethodGet, http.MethodOptions:
+			next.ServeHTTP(w, r)
+		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
 		}
-		next(w, r)
+	}
+	return http.HandlerFunc(fn)
+}
+
+const (
+	corsAllowOrigin = "Access-Control-Allow-Origin"
+	corsAllowHeader = "Access-Control-Allow-Headers"
+	corsAllowMethod = "Access-Control-Allow-Methods"
+)
+
+func allowOrigin(next http.Handler) http.Handler {
+	ms := []string{http.MethodGet, http.MethodOptions}
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(corsAllowOrigin, "*")
+		w.Header().Set(corsAllowMethod, strings.Join(ms, ", "))
+		next.ServeHTTP(w, r)
 	}
 	return http.HandlerFunc(fn)
 }
