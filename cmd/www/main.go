@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/midbel/log"
+	"github.com/midbel/tail"
 	"github.com/midbel/toml"
 )
 
@@ -31,6 +32,34 @@ type Log struct {
 }
 
 func (g Log) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == g.URL {
+		g.serveEntries(w, r)
+	} else if r.URL.Path == fmt.Sprintf("%s/%s", g.URL, "detail") {
+		g.serveInfo(w, r)
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func (g Log) serveInfo(w http.ResponseWriter, r *http.Request) {
+	i, err := os.Stat(g.File)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	c := struct {
+		File    string    `json:"file"`
+		Size    int64     `json:"size"`
+		ModTime time.Time `json:"modtime"`
+	}{
+		File:    g.File,
+		Size:    i.Size(),
+		ModTime: i.ModTime(),
+	}
+	json.NewEncoder(w).Encode(c)
+}
+
+func (g Log) serveEntries(w http.ResponseWriter, r *http.Request) {
 	var (
 		query = r.URL.Query()
 		limit = retrLimit(query.Get(qLimit))
@@ -44,11 +73,12 @@ func (g Log) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	w.Header().Set("content-type", "application/json")
 	json.NewEncoder(w).Encode(es)
 }
 
 func (g Log) readEntries(limit int, filter string) ([]log.Entry, error) {
-	r, err := os.Open(g.File)
+	r, err := tail.Tail(g.File, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -69,9 +99,6 @@ func (g Log) readEntries(limit int, filter string) ([]log.Entry, error) {
 		}
 		e.When = e.When.Truncate(time.Second)
 		es = append(es, e)
-	}
-	if limit > 0 && limit < len(es) {
-		es = es[len(es)-limit:]
 	}
 	return es, nil
 }
