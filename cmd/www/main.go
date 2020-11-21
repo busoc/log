@@ -78,6 +78,9 @@ func (g Log) serveEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g Log) readEntries(limit int, filter string) ([]log.Entry, error) {
+	if limit <= 0 {
+		limit = g.Line
+	}
 	r, err := tail.Tail(g.File, limit)
 	if err != nil {
 		return nil, err
