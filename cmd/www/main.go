@@ -79,7 +79,7 @@ func (g Log) serveEntries(w http.ResponseWriter, r *http.Request) {
 
 func (g Log) readEntries(limit int, filter string) ([]log.Entry, error) {
 	if limit <= 0 {
-		limit = g.Line
+		limit = int(g.Line)
 	}
 	r, err := tail.Tail(g.File, limit)
 	if err != nil {
@@ -106,10 +106,26 @@ func (g Log) readEntries(limit int, filter string) ([]log.Entry, error) {
 	return es, nil
 }
 
+type Site struct {
+	Base string `toml:"dir"`
+	URL  string
+}
+
+func (s Site) Handle() (string, http.Handler) {
+	if i, err := os.Stat(s.Base); s.Base == "" || err != nil || !i.IsDir() {
+		return "", nil
+	}
+	if s.URL == "" {
+		s.URL = "/"
+	}
+	return s.URL, http.FileServer(http.Dir(s.Base))
+}
+
 func main() {
 	flag.Parse()
 	config := struct {
 		Addr string
+		Site Site
 		Logs []Log `toml:"log"`
 	}{}
 	if err := toml.DecodeFile(flag.Arg(0), &config); err != nil {
@@ -125,6 +141,9 @@ func main() {
 		http.Handle(g.URL, wrapHandler(g))
 	}
 	http.Handle("/sources", viewSources(config.Logs))
+	if url, handler := config.Site.Handle(); url != "" && handler != nil {
+		http.Handle(url, handler)
+	}
 
 	if err := http.ListenAndServe(config.Addr, nil); err != nil {
 		fmt.Fprintln(os.Stderr, err)
