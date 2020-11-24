@@ -129,6 +129,7 @@ func main() {
 	flag.Parse()
 	config := struct {
 		Addr string
+		Query int `toml:"max-query"`
 		Site Site
 		Logs []Log `toml:"log"`
 	}{}
@@ -137,7 +138,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	sema := semaphore.NewWeighted(MaxQuery)
+	if config.Query <= 0 {
+		config.Query = MaxQuery
+	}
+	sema := semaphore.NewWeighted(int64(config.Query))
 
 	for _, g := range config.Logs {
 		if i, err := os.Stat(g.File); err != nil || i.IsDir() {
