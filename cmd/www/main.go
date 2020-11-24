@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,12 +17,15 @@ import (
 	"github.com/midbel/log"
 	"github.com/midbel/tail"
 	"github.com/midbel/toml"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
 	qFilter = "filter"
 	qLimit  = "limit"
 )
+
+const MaxQuery = 1024
 
 type Log struct {
 	Label   string
@@ -52,7 +56,7 @@ func (g Log) serveInfo(w http.ResponseWriter, r *http.Request) {
 		Size    int64     `json:"size"`
 		ModTime time.Time `json:"modtime"`
 	}{
-		File:    g.File,
+		File:    filepath.Clean(g.File),
 		Size:    i.Size(),
 		ModTime: i.ModTime(),
 	}
@@ -133,12 +137,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	sema := semaphore.NewWeighted(MaxQuery)
+
 	for _, g := range config.Logs {
 		if i, err := os.Stat(g.File); err != nil || i.IsDir() {
 			fmt.Fprintf(os.Stderr, "%s: file does not exist! (%v)\n", g.File, err)
 			os.Exit(1)
 		}
-		http.Handle(g.URL, wrapHandler(g))
+		http.Handle(g.URL, wrapHandler(sema, g))
+		http.Handle(fmt.Sprintf("%s/detail", g.URL), wrapHandler(sema, g))
 	}
 	http.Handle("/sources", viewSources(config.Logs))
 	if url, handler := config.Site.Handle(); url != "" && handler != nil {
@@ -151,7 +158,10 @@ func main() {
 	}
 }
 
-func wrapHandler(next http.Handler) http.Handler {
+func wrapHandler(sema *semaphore.Weighted, next http.Handler) http.Handler {
+	if sema != nil {
+		next = limitRequest(sema, next)
+	}
 	return allowMethod(allowOrigin(next))
 }
 
@@ -176,7 +186,20 @@ func viewSources(logs []Log) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(sources)
 	}
-	return wrapHandler(http.HandlerFunc(fn))
+	return wrapHandler(nil, http.HandlerFunc(fn))
+}
+
+func limitRequest(sema *semaphore.Weighted, next http.Handler) http.Handler {
+	ctx := context.TODO()
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		if err := sema.Acquire(ctx, 1); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		defer sema.Release(1)
+		next.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(fn)
 }
 
 func allowMethod(next http.Handler) http.Handler {
