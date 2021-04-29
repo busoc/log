@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/midbel/log"
+	"github.com/busoc/log"
 	"github.com/midbel/tail"
 	"github.com/midbel/toml"
 	"golang.org/x/sync/semaphore"
