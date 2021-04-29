@@ -762,7 +762,7 @@ func (w when) Time() time.Time {
 	}
 	t := time.Date(w.Year, time.Month(w.Mon), w.Day, w.Hour, w.Min, w.Sec, w.Frac, zone)
 	if w.YearDay > 0 {
-		t = t.AddDate(0, 0, w.YearDay-t.YearDay()+1)
+		t = t.AddDate(0, 0, w.YearDay-t.YearDay())
 	}
 	return t
 }

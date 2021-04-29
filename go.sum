@@ -1,0 +1,6 @@
+github.com/midbel/tail v0.0.0-20201121193655-238eedd09f56 h1:rj4EqgA5upCsZdvQfS7jA76/MI/oFSQBjukHcEiClac=
+github.com/midbel/tail v0.0.0-20201121193655-238eedd09f56/go.mod h1:7nL1CMziU91iZcQLw4BGj2Nt17nU/56Ua5MBoueEabE=
+github.com/midbel/toml v1.0.1 h1:Va/vbvvo+ic6Zc9J8tD19jRZzjxwCxCCt5QzZAmf7xM=
+github.com/midbel/toml v1.0.1/go.mod h1:+sjz9eF3MUm1viemJC2sOXFVLrtmkWunF6rmX1zDKM0=
+golang.org/x/sync v0.0.0-20210220032951-036812b2e83c h1:5KslGYwFpkhGh+Q16bwMP3cOontH8FOep7tGV86Y7SQ=
+golang.org/x/sync v0.0.0-20210220032951-036812b2e83c/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
